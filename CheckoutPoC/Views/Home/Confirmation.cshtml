@@ -1,0 +1,12 @@
+﻿@using Newtonsoft.Json
+@{
+
+}
+
+<h1>Payment Confirmation</h1>
+
+<p>Thanks for your purchase.</p>
+
+<code>
+	@Html.Raw(JsonConvert.SerializeObject(Model))
+</code>

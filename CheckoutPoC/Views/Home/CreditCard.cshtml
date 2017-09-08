@@ -1,0 +1,32 @@
+﻿@{
+    ViewBag.Title = "Home Page";
+}
+
+<p class="lead">Thank you for buying this kettle</p>
+<img src="http://media.4rgos.it/s/Argos/5571390_R_SET?$Main768$&w=620&h=620" />
+
+<form class="card-form" method="POST">
+	<input data-checkout="card-number" type="text" placeholder="Credit card number" value="4242424242424242">
+	<input data-checkout="card-name" type="text" placeholder="Name on card" value="Martin">
+	<input data-checkout="expiry-month" type="text" placeholder="MM" value="06">
+	<input data-checkout="expiry-year" type="text" placeholder="YY" value="18">
+	<input data-checkout="cvv" type="text" placeholder="CVV" value="100">
+	<input type="submit" value="Pay Now">
+</form>
+
+
+<script>
+    window.CKOConfig = {
+        debugMode: true,
+        publicKey: 'pk_test_6ff46046-30af-41d9-bf58-929022d2cd14',
+        ready: function (event) {
+            console.log("CheckoutKit.js is ready");
+            CheckoutKit.monitorForm('.card-form', CheckoutKit.CardFormModes.CARD_TOKENISATION, { includeBinData: true });
+        },
+        apiError: function (event) {
+            // ...
+        }
+    };
+</script>
+
+<script async src="https://cdn.checkout.com/sandbox/js/checkoutkit.js"></script>

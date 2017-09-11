@@ -10,6 +10,8 @@ using Checkout.ApiServices.Charges.RequestModels;
 using Checkout.ApiServices.SharedModels;
 using System.Web.ModelBinding;
 using PayPal.Api;
+using System.Net;
+using System.IO;
 
 namespace CheckoutComAndPayPalPoC.Controllers
 {
@@ -428,6 +430,75 @@ namespace CheckoutComAndPayPalPoC.Controllers
 
 			Session["PayPal.Refund"] = response;
 			return RedirectToAction("Index");
+		}
+
+		[HttpPost]
+		[CheckoutWebhookAuthorize]
+		public ActionResult CheckoutWebhook()
+		{
+			string json;
+			Request.InputStream.Seek(0, System.IO.SeekOrigin.Begin);
+			using (var inputStream = new System.IO.StreamReader(Request.InputStream))
+			{
+				json = inputStream.ReadToEnd();
+			}
+			var evt = JsonConvert.DeserializeObject<dynamic>(json);
+
+			var hooks = Session["Hooks"] as Dictionary<string, object> ?? new Dictionary<string, object>();
+			hooks.Add(string.Format("{0} {1}", evt.eventType, evt.message.id), evt);
+			Session["Hooks"] = hooks;
+			return new HttpStatusCodeResult(HttpStatusCode.OK);
+		}
+	}
+
+	public class CheckoutWebhookAuthorizeAttribute : AuthorizeAttribute
+	{
+		public override void OnAuthorization(AuthorizationContext filterContext)
+		{
+			if (Authorize(filterContext))
+			{
+				return;
+			}
+			HandleUnauthorizedRequest(filterContext);
+		}
+		protected override void HandleUnauthorizedRequest(AuthorizationContext filterContext)
+		{
+			base.HandleUnauthorizedRequest(filterContext);
+		}
+		private bool Authorize(AuthorizationContext actionContext)
+		{
+			try
+			{
+				HttpRequestBase request = actionContext.RequestContext.HttpContext.Request;
+				string token = request.Headers["X-AuthToken"];
+				return IsTokenValid(token, GetIP(request), request.UserAgent);
+			}
+			catch (Exception)
+			{
+				return false;
+			}
+		}
+		public static bool IsTokenValid(string token, string ip, string userAgent)
+		{
+			var ips = ConfigurationManager.AppSettings["Checkout.WebhookIPs"].Split(new char[] { ';' });
+			if (!ips.Contains(ip))
+				return false;
+
+			// TODO: validate the token using the secret key. Can't find documentation to do this.
+			var secretKey = ConfigurationManager.AppSettings["Checkout.WebhookKey"];
+
+			return true;
+		}
+		public static string GetIP(HttpRequestBase request)
+		{
+			string ip = request.Headers["X-Forwarded-For"]; // AWS compatibility
+
+			if (string.IsNullOrEmpty(ip))
+			{
+				ip = request.UserHostAddress;
+			}
+
+			return ip;
 		}
 	}
 }

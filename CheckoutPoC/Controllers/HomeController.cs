@@ -187,6 +187,8 @@ namespace CheckoutComAndPayPalPoC.Controllers
 			}
 			var charge = response.Model;
 
+			Session["CreditCard.Charge"] = charge;
+
 			return View("Confirmation", charge);
 		}
 
@@ -212,6 +214,7 @@ namespace CheckoutComAndPayPalPoC.Controllers
 		public ActionResult PayPal()
 		{
 			// https://github.com/pedropaf/paypal-integration
+			// http://paypal.github.io/PayPal-NET-SDK/Samples/PaymentWithPayPal.aspx.html
 			var context = CreatePayPalAPIContext();
 
 			var orderId = 1234;
@@ -263,7 +266,7 @@ namespace CheckoutComAndPayPalPoC.Controllers
 			};
 
 			// Create a payment using a valid APIContext
-			var createdPayment = payment.Create(context);
+			var createdPayment = Payment.Create(context, payment);
 
 			return Redirect(createdPayment.GetApprovalUrl());
 		}
@@ -281,7 +284,81 @@ namespace CheckoutComAndPayPalPoC.Controllers
 			var paymentExecution = new PaymentExecution() { payer_id = payerId };
 			var payment = new Payment() { id = paymentId };
 			var executedPayment = payment.Execute(context, paymentExecution);
+
+			Session["PayPal.Payment"] = executedPayment;
+
 			return View(executedPayment);
+		}
+
+		public ActionResult RefundCreditCard()
+		{
+			var charge = Session["CreditCard.Charge"] as Checkout.ApiServices.Charges.ResponseModels.Charge;
+			if (charge == null)
+				return RedirectToAction("Index");
+
+			var client = CreateAPIClient();
+			var response = client.ChargeService.RefundCharge(charge.Id, new ChargeRefund()
+			{
+				Value = charge.Value,
+				Description = charge.Description,
+				Products = charge.Products,
+			});
+
+			if (response.HasError)
+				throw new Exception(response.Error.Message);
+
+			var refund = response.Model;
+			if (refund.Status != "Refunded")
+				throw new Exception("Not refunded??");
+
+			Session["CreditCard.Refund"] = refund;
+			return RedirectToAction("Index");
+		}
+
+		public ActionResult RefundCreditCardWithId(string chargeId)
+		{
+			if (string.IsNullOrWhiteSpace(chargeId))
+				return RedirectToAction("Index");
+
+			var client = CreateAPIClient();
+			var response = client.ChargeService.RefundCharge("charge_" + chargeId, new ChargeRefund()
+			{
+			});
+
+			if (response.HasError)
+				throw new Exception(response.Error.Message);
+
+			var refund = response.Model;
+			if (refund.Status != "Refunded")
+				throw new Exception("Not refunded??");
+
+			Session["CreditCard.Refund"] = refund;
+			return RedirectToAction("Index");
+		}
+
+		public ActionResult PayPalRefunded()
+		{
+			var payment = Session["PayPal.Payment"] as Payment;
+			if (payment == null)
+				return RedirectToAction("Index");
+
+			// Get the sale resource from the executed payment's list of related resources.
+			var tx = payment.transactions[0];
+			var sale = tx.related_resources[0].sale;
+
+			var context = CreatePayPalAPIContext();
+			var response = Sale.Refund(context, sale.id, new RefundRequest()
+			{
+				amount = tx.amount,
+				description = tx.description,
+				reason = "Don't want it",
+			});
+
+			if (response.state != "completed")
+				throw new Exception("state is not completed??");
+
+			Session["PayPal.Refund"] = response;
+			return RedirectToAction("Index");
 		}
 	}
 }

@@ -10,3 +10,35 @@
 <a class="btn btn-lg btn-primary" href="@Url.Action("CreditCard")">Pay by Credit/Debit Card</a>
 
 <a class="btn btn-lg btn-info" href="@Url.Action("PayPal")">Pay by PayPal</a>
+
+<fieldset>
+	<legend>Refunds</legend>
+
+	@if (Session["CreditCard.Charge"] != null)
+	{
+		<a class="btn btn-lg btn-danger" href="@Url.Action("RefundCreditCard")">Refund Credit/Debit Card payment</a>
+	}
+	@if (Session["CreditCard.Refund"] != null)
+	{
+		<div class="alert alert-success">Credit/Debit Card payment refunded.</div>
+	}
+
+	@if (Session["PayPal.Payment"] != null)
+	{
+		<a class="btn btn-lg btn-danger" href="@Url.Action("RefundPayPal")">Refund PayPal payment</a>
+	}
+	@if (Session["PayPal.Refund"] != null)
+	{
+		<div class="alert alert-success">PayPal payment refunded.</div>
+	}
+
+	@using (Html.BeginForm("RefundCreditCardWithId", "Home", FormMethod.Post, new { @class = "form-horizontal" }))
+	{
+		<div class="form-group">
+			<label class="control-label">Charge Id</label>
+			@Html.TextBox("chargeId", "", new { @class = "form-control" })
+		</div>
+		<input type="submit" class="btn btn-danger" value="Submit" />
+	}
+</fieldset>
+

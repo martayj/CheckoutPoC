@@ -1,5 +1,7 @@
-﻿@{
+﻿@using System.Configuration
+@{
     ViewBag.Title = "Home Page";
+	var publicKey = ConfigurationManager.AppSettings["Checkout.PublishableKey"];
 }
 
 <p class="lead">Thank you for buying this kettle</p>
@@ -18,7 +20,7 @@
 <script>
     window.CKOConfig = {
         debugMode: true,
-        publicKey: 'pk_test_6ff46046-30af-41d9-bf58-929022d2cd14',
+        publicKey: '@(publicKey)',
         ready: function (event) {
             console.log("CheckoutKit.js is ready");
             CheckoutKit.monitorForm('.card-form', CheckoutKit.CardFormModes.CARD_TOKENISATION, { includeBinData: true });

@@ -163,8 +163,9 @@ namespace CheckoutComAndPayPalPoC.Controllers
 
 			var payload = new CardTokenCharge()
 			{
-				AutoCapture = "Y", // transfer funds automatically
-				AutoCapTime = 0, // transfer funds immediately after authorisation
+				//AutoCapture = "Y", // transfer funds automatically
+				//AutoCapTime = 0, // transfer funds immediately after authorisation
+				AutoCapture = "N", // manually capture
 				ChargeMode = 1, // non-3D
 				Email = "martin.cannon@freshegg.com",
 				Description = "Order",
@@ -180,16 +181,31 @@ namespace CheckoutComAndPayPalPoC.Controllers
 			};
 
 			var client = CreateAPIClient();
+			// Authorise
 			var response = client.ChargeService.ChargeWithCardToken(payload);
 			if (response.HasError)
 			{
 				throw new Exception(response.Error.Message);
 			}
 			var charge = response.Model;
-
 			Session["CreditCard.Charge"] = charge;
 
-			return View("Confirmation", charge);
+			// Capture
+			var captureResponse = client.ChargeService.CaptureCharge(charge.Id, new ChargeCapture()
+			{
+				// I don't see the point in sending this info??
+				Value = charge.Value,
+				Description = charge.Description,
+				Products = charge.Products
+			});
+			if (captureResponse.HasError)
+			{
+				throw new Exception(captureResponse.Error.Message);
+			}
+			var capture = captureResponse.Model;
+			Session["CreditCard.Capture"] = capture;
+
+			return View("Confirmation");
 		}
 
 		private APIClient CreateAPIClient()
@@ -292,16 +308,28 @@ namespace CheckoutComAndPayPalPoC.Controllers
 
 		public ActionResult RefundCreditCard()
 		{
-			var charge = Session["CreditCard.Charge"] as Checkout.ApiServices.Charges.ResponseModels.Charge;
-			if (charge == null)
-				return RedirectToAction("Index");
+			if (Session["CreditCard.Capture"] != null)
+				_RefundCreditCard();
+			else if (Session["CreditCard.Capture"] != null)
+				_VoidCreditCard();
 
+			return RedirectToAction("Index");
+		}
+
+		public void _RefundCreditCard()
+		{
+			var capture = Session["CreditCard.Capture"] as Checkout.ApiServices.Charges.ResponseModels.Capture;
+			if (capture == null || capture.Status != "Captured")
+				return;
+
+			// Captured, so refund
 			var client = CreateAPIClient();
-			var response = client.ChargeService.RefundCharge(charge.Id, new ChargeRefund()
+			var response = client.ChargeService.RefundCharge(capture.Id, new ChargeRefund()
 			{
-				Value = charge.Value,
-				Description = charge.Description,
-				Products = charge.Products,
+				// I don't see the point in sending this info??
+				//Value = capture.Value,
+				Description = capture.Description,
+				Products = capture.Products,
 			});
 
 			if (response.HasError)
@@ -312,7 +340,31 @@ namespace CheckoutComAndPayPalPoC.Controllers
 				throw new Exception("Not refunded??");
 
 			Session["CreditCard.Refund"] = refund;
-			return RedirectToAction("Index");
+		}
+
+		public void _VoidCreditCard()
+		{
+			var charge = Session["CreditCard.Charge"] as Checkout.ApiServices.Charges.ResponseModels.Charge;
+			if (charge == null || charge.Status != "Authorised")
+				return;
+
+			// Authorised, so void
+			var client = CreateAPIClient();
+			var response = client.ChargeService.VoidCharge(charge.Id, new ChargeVoid()
+			{
+				// I don't see the point in sending this info??
+				Description = charge.Description,
+				Products = charge.Products,
+			});
+
+			if (response.HasError)
+				throw new Exception(response.Error.Message);
+
+			var @void = response.Model;
+			if (@void.Status != "Voided")
+				throw new Exception("Not voided??");
+
+			Session["CreditCard.Void"] = @void;
 		}
 
 		public ActionResult RefundCreditCardWithId(string chargeId)

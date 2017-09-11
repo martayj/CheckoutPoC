@@ -7,6 +7,18 @@
 
 <p>Thanks for your purchase.</p>
 
-<code>
-	@Html.Raw(JsonConvert.SerializeObject(Model))
-</code>
+@if (Session["CreditCard.Charge"] != null)
+{
+	<h2>Charge</h2>
+	<code>
+		@Html.Raw(JsonConvert.SerializeObject(Session["CreditCard.Charge"]))
+	</code>
+}
+
+@if (Session["CreditCard.Capture"] != null)
+{
+	<h2>Capture</h2>
+	<code>
+		@Html.Raw(JsonConvert.SerializeObject(Session["CreditCard.Capture"]))
+	</code>
+}

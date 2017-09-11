@@ -163,8 +163,8 @@ namespace CheckoutComAndPayPalPoC.Controllers
 
 			var payload = new CardTokenCharge()
 			{
-				AutoCapTime = 24,
-				AutoCapture = "Y",
+				AutoCapture = "Y", // transfer funds automatically
+				AutoCapTime = 0, // transfer funds immediately after authorisation
 				ChargeMode = 1, // non-3D
 				Email = "martin.cannon@freshegg.com",
 				Description = "Order",
@@ -176,7 +176,7 @@ namespace CheckoutComAndPayPalPoC.Controllers
 				CardToken = cardToken,
 				ShippingDetails = shippingAddress,
 				// billing address??
-				Products = new List<Product>() { product },
+				Products = new List<Product>() { product }
 			};
 
 			var client = CreateAPIClient();
@@ -336,7 +336,7 @@ namespace CheckoutComAndPayPalPoC.Controllers
 			return RedirectToAction("Index");
 		}
 
-		public ActionResult PayPalRefunded()
+		public ActionResult RefundPayPal()
 		{
 			var payment = Session["PayPal.Payment"] as Payment;
 			if (payment == null)
@@ -352,6 +352,23 @@ namespace CheckoutComAndPayPalPoC.Controllers
 				amount = tx.amount,
 				description = tx.description,
 				reason = "Don't want it",
+			});
+
+			if (response.state != "completed")
+				throw new Exception("state is not completed??");
+
+			Session["PayPal.Refund"] = response;
+			return RedirectToAction("Index");
+		}
+
+		public ActionResult RefundPayPalWithSaleId(string saleId)
+		{
+			if (string.IsNullOrWhiteSpace(saleId))
+				return RedirectToAction("Index");
+
+			var context = CreatePayPalAPIContext();
+			var response = Sale.Refund(context, saleId, new RefundRequest()
+			{
 			});
 
 			if (response.state != "completed")

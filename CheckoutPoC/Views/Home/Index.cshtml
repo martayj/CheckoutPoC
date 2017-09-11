@@ -5,11 +5,14 @@
 <p class="lead">Thank you for buying this kettle</p>
 <img src="http://media.4rgos.it/s/Argos/5571390_R_SET?$Main768$&w=620&h=620" />
 
-<p>How would you like to pay?</p>
+<fieldset>
+	<legend>Payment</legend>
 
-<a class="btn btn-lg btn-primary" href="@Url.Action("CreditCard")">Pay by Credit/Debit Card</a>
+	<a class="btn btn-lg btn-primary" href="@Url.Action("CreditCard")">Pay by Credit/Debit Card</a>
 
-<a class="btn btn-lg btn-info" href="@Url.Action("PayPal")">Pay by PayPal</a>
+	<a class="btn btn-lg btn-info" href="@Url.Action("PayPal")">Pay by PayPal</a>
+
+</fieldset>
 
 <fieldset>
 	<legend>Refunds</legend>
@@ -32,13 +35,18 @@
 		<div class="alert alert-success">PayPal payment refunded.</div>
 	}
 
-	@using (Html.BeginForm("RefundCreditCardWithId", "Home", FormMethod.Post, new { @class = "form-horizontal" }))
+	@using (Html.BeginForm("RefundCreditCardWithId", "Home", FormMethod.Post, new { @class = "form-inline" }))
 	{
-		<div class="form-group">
-			<label class="control-label">Charge Id</label>
-			@Html.TextBox("chargeId", "", new { @class = "form-control" })
-		</div>
-		<input type="submit" class="btn btn-danger" value="Submit" />
+		<label class="control-label">Charge Id</label>
+		@Html.TextBox("chargeId", "", new { @class = "form-control" })
+		<input type="submit" class="btn btn-danger" value="Refund Credit Card payment" />
+	}
+
+	@using (Html.BeginForm("RefundPayPalWithSaleId", "Home", FormMethod.Post, new { @class = "form-inline" }))
+	{
+		<label class="control-label">Sale Id</label>
+		@Html.TextBox("saleId", "", new { @class = "form-control" })
+		<input type="submit" class="btn btn-danger" value="Refund PayPal payment" />
 	}
 </fieldset>
 

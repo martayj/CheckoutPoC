@@ -12,6 +12,7 @@ using System.Web.ModelBinding;
 using PayPal.Api;
 using System.Net;
 using System.IO;
+using System.Runtime.Caching;
 
 namespace CheckoutComAndPayPalPoC.Controllers
 {
@@ -19,6 +20,9 @@ namespace CheckoutComAndPayPalPoC.Controllers
 	{
 		public ActionResult Index()
 		{
+			var hooks = MemoryCache.Default["Hooks"] as Dictionary<string, object> ?? new Dictionary<string, object>();
+			ViewBag.Hooks = hooks;
+
 			return View();
 		}
 
@@ -444,9 +448,9 @@ namespace CheckoutComAndPayPalPoC.Controllers
 			}
 			var evt = JsonConvert.DeserializeObject<dynamic>(json);
 
-			var hooks = Session["Hooks"] as Dictionary<string, object> ?? new Dictionary<string, object>();
+			var hooks = MemoryCache.Default["Hooks"] as Dictionary<string, object> ?? new Dictionary<string, object>();
 			hooks.Add(string.Format("{0} {1}", evt.eventType, evt.message.id), evt);
-			Session["Hooks"] = hooks;
+			MemoryCache.Default["Hooks"] = hooks;
 			return new HttpStatusCodeResult(HttpStatusCode.OK);
 		}
 	}
@@ -470,7 +474,7 @@ namespace CheckoutComAndPayPalPoC.Controllers
 			try
 			{
 				HttpRequestBase request = actionContext.RequestContext.HttpContext.Request;
-				string token = request.Headers["X-AuthToken"];
+				string token = request.Headers["Authorization"];
 				return IsTokenValid(token, GetIP(request), request.UserAgent);
 			}
 			catch (Exception)
@@ -480,18 +484,22 @@ namespace CheckoutComAndPayPalPoC.Controllers
 		}
 		public static bool IsTokenValid(string token, string ip, string userAgent)
 		{
+			// Check the originating IP
+			// List of IPs here: https://docs.checkout.com/getting-started/webhooks
 			var ips = ConfigurationManager.AppSettings["Checkout.WebhookIPs"].Split(new char[] { ';' });
 			if (!ips.Contains(ip))
 				return false;
 
-			// TODO: validate the token using the secret key. Can't find documentation to do this.
+			// Validate the token using the secret key. Straight comparison.
 			var secretKey = ConfigurationManager.AppSettings["Checkout.WebhookKey"];
+			if (!string.Equals(secretKey, token))
+				return false;
 
 			return true;
 		}
 		public static string GetIP(HttpRequestBase request)
 		{
-			string ip = request.Headers["X-Forwarded-For"]; // AWS compatibility
+			string ip = request.Headers["X-Forwarded-For"];
 
 			if (string.IsNullOrEmpty(ip))
 			{

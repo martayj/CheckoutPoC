@@ -1,5 +1,7 @@
 ﻿@{
-    ViewBag.Title = "Home Page";
+	ViewBag.Title = "Home Page";
+
+	var hooks = ViewBag.Hooks as Dictionary<string, object> ?? new Dictionary<string, object>();
 }
 
 <p class="lead">Thank you for buying this kettle</p>
@@ -54,3 +56,21 @@
 	}
 </fieldset>
 
+<fieldset>
+	<legend>Webhooks</legend>
+
+	<table>
+		<tr>
+			<th>Event</th>
+			<th>Message</th>
+		</tr>
+		@foreach (var hook in hooks)
+		{
+			<tr>
+				<td>@hook.Key</td>
+				<td><code>@hook.Value</code></td>
+			</tr>
+		}
+	</table>
+
+</fieldset>

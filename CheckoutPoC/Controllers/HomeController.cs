@@ -13,6 +13,7 @@ using PayPal.Api;
 using System.Net;
 using System.IO;
 using System.Runtime.Caching;
+using System.Text;
 
 namespace CheckoutComAndPayPalPoC.Controllers
 {
@@ -214,7 +215,7 @@ namespace CheckoutComAndPayPalPoC.Controllers
 			return View("Confirmation");
 		}
 
-		private APIClient CreateAPIClient()
+		public static APIClient CreateAPIClient()
 		{
 			var secretKey = ConfigurationManager.AppSettings["Checkout.SecretKey"];
 			var env = (Checkout.Helpers.Environment)Enum.Parse(typeof(Checkout.Helpers.Environment), ConfigurationManager.AppSettings["Checkout.Environment"], true);
@@ -224,8 +225,10 @@ namespace CheckoutComAndPayPalPoC.Controllers
 			return client;
 		}
 
-		private APIContext CreatePayPalAPIContext()
+		public static APIContext CreatePayPalAPIContext()
 		{
+			// https://developer.paypal.com/developer/applications/ > REST API apps
+			// Create an app and update app settings with client id and secret.
 			var clientId = ConfigurationManager.AppSettings["PayPal.ClientId"];
 			var secret = ConfigurationManager.AppSettings["PayPal.Secret"];
 			var accessToken = new OAuthTokenCredential(clientId, secret).GetAccessToken();
@@ -239,7 +242,7 @@ namespace CheckoutComAndPayPalPoC.Controllers
 			// http://paypal.github.io/PayPal-NET-SDK/Samples/PaymentWithPayPal.aspx.html
 			var context = CreatePayPalAPIContext();
 
-			var orderId = 1234;
+			var orderId = Guid.NewGuid();
 			var baseUrl = Request.Url.Scheme + "://" + Request.Url.Host;
 			if (!Request.Url.IsDefaultPort)
 				baseUrl += ":" + Request.Url.Port.ToString();
@@ -452,6 +455,76 @@ namespace CheckoutComAndPayPalPoC.Controllers
 			hooks.Add(string.Format("{0} {1}", evt.eventType, evt.message.id), evt);
 			MemoryCache.Default["Hooks"] = hooks;
 			return new HttpStatusCodeResult(HttpStatusCode.OK);
+		}
+
+		[HttpPost]
+		[PayPalWebhookAuthorize]
+		public ActionResult PayPalWebhook()
+		{
+			string json;
+			Request.InputStream.Seek(0, System.IO.SeekOrigin.Begin);
+			using (var inputStream = new System.IO.StreamReader(Request.InputStream))
+			{
+				json = inputStream.ReadToEnd();
+			}
+
+			// https://developer.paypal.com/docs/integration/direct/webhooks/notification-messages/
+			var evt = JsonConvert.DeserializeObject<dynamic>(json);
+			var hooks = MemoryCache.Default["Hooks"] as Dictionary<string, object> ?? new Dictionary<string, object>();
+			hooks.Add(string.Format("{0} {1}", evt.event_type, evt.resource_type), evt);
+			MemoryCache.Default["Hooks"] = hooks;
+
+			return new HttpStatusCodeResult(HttpStatusCode.OK);
+		}
+	}
+
+	public class PayPalWebhookAuthorizeAttribute : AuthorizeAttribute
+	{
+		public override void OnAuthorization(AuthorizationContext filterContext)
+		{
+			if (Authorize(filterContext))
+			{
+				return;
+			}
+			HandleUnauthorizedRequest(filterContext);
+		}
+		protected override void HandleUnauthorizedRequest(AuthorizationContext filterContext)
+		{
+			base.HandleUnauthorizedRequest(filterContext);
+		}
+		private bool Authorize(AuthorizationContext actionContext)
+		{
+			try
+			{
+				// https://developer.paypal.com/docs/integration/direct/webhooks/notification-messages/ > Event headers
+				HttpRequestBase request = actionContext.RequestContext.HttpContext.Request;
+
+				// https://github.com/paypal/PayPal-NET-SDK/wiki/Webhook-Event-Validation
+				var context = HomeController.CreatePayPalAPIContext();
+
+				// Use the webhook ID given when you set up the webhook url in the application.
+				var webhookId = ConfigurationManager.AppSettings["PayPal.WebhookId"];
+
+				var requestheaders = HttpContext.Current.Request.Headers;
+
+				string requestBody;
+				request.InputStream.Seek(0, System.IO.SeekOrigin.Begin);
+				using (var reader = new StreamReader(request.InputStream, Encoding.UTF8, true, 1024, true))
+				{
+					requestBody = reader.ReadToEnd();
+				}
+				//var bytes = new byte[request.InputStream.Length];
+				//request.InputStream.Read(bytes, 0, bytes.Length);
+				//request.InputStream.Position = 0;
+				//var requestBody = Encoding.UTF8.GetString(bytes);
+
+				var isValid = WebhookEvent.ValidateReceivedEvent(context, requestheaders, requestBody, webhookId);
+				return isValid;
+			}
+			catch (Exception)
+			{
+				return false;
+			}
 		}
 	}
 

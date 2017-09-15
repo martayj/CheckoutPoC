@@ -1,0 +1,105 @@
+@font-face {
+  font-family: 'Roboto';
+  font-style: normal;
+  font-weight: 400;
+  src: url(https://fonts.gstatic.com/s/roboto/v15/oMMgfZMQthOryQo9n22dcuvvDin1pK8aKteLpeZ5c0A.woff2) format('woff2');
+  unicode-range: U+0000-00FF, U+0131, U+0152-0153, U+02C6, U+02DA, U+02DC, U+2000-206F, U+2074, U+20AC, U+2212, U+2215;
+}
+
+/********************/
+/* INPUT CONTAINERS */
+/********************/
+
+    .embedded .card-form .input-group {
+        border-radius: 5px;
+    }
+    /* focus */
+    .embedded .card-form .input-group.focus:not(.error) {
+        border: 1px solid green;
+    }
+    /* icons */
+    .embedded .card-form .input-group .icon {
+        color: slategray;
+    }
+    /* hint icon (CVV) */
+    .embedded .card-form .input-group .hint-icon {
+        color: slategray;
+    }
+    .embedded .card-form .input-group .hint-icon:hover {
+        color: darkslategray;
+    }
+    /* error */
+    .embedded .card-form .input-group.error {
+        border: 1px solid red;
+    }
+    .embedded .card-form .input-group.error .hint.error-message { /* message container */
+        background: lightgray; /* make sure to match the pointer color (below) */
+        color: red;
+    }
+    .embedded .card-form .input-group.error .hint.error-message .arrow { /* message container pointer */
+        border-bottom-color: lightgray; /* matches message container background */
+    }
+    .embedded .card-form .input-group.error .hint-icon:hover { /* hint icon */
+        color: red;
+    }
+
+/******************/
+/* INPUT ELEMENTS */
+/******************/
+
+    .embedded .card-form .input-group:not(.error) input {
+        font-family: 'Roboto';
+        color: dimgray;
+    }
+    /* focus */
+    .embedded .card-form .input-group.focus input {
+        color: black;
+    }
+    /* error */
+    .embedded .card-form .input-group.error input {
+        color: red;
+    }
+    /* change placeholder color */
+    .embedded .card-form .input-group input::-webkit-input-placeholder { /* Chrome/Opera/Safari */
+    color: lightgray;
+    }
+    .embedded .card-form .input-group input::-moz-placeholder { /* Firefox 19+ */
+    color: lightgray;
+    }
+    .embedded .card-form .input-group input:-ms-input-placeholder { /* IE 10+ */
+    color: lightgray;
+    }
+    .embedded .card-form .input-group input:-moz-placeholder { /* Firefox 18- */
+    color: lightgray;
+    }
+
+/******************/
+/* MISC           */
+/******************/
+
+    /* adjust date and cvv distance */
+    .embedded .card-form .split-view .left {
+        padding-right: 3px;
+    }
+    .embedded .card-form .split-view .right {
+        padding-left: 3px;
+    }
+
+    /* hide scheme logo */
+    /*
+    .embedded .card-form .input-group .card-logo {
+        display: none;
+    }
+    */
+
+    /* to remove all icons */
+    /*
+    .embedded .card-form .input-group .icon,
+    .embedded .card-form .input-group .hint-icon {
+        display: none;
+    }
+
+    .embedded .card-form .input-group .icon +* {
+        padding-left: 10px;
+    }
+    */

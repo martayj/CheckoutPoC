@@ -10,7 +10,9 @@
 <fieldset>
 	<legend>Payment</legend>
 
-	<a class="btn btn-lg btn-primary" href="@Url.Action("CreditCard")">Pay by Credit/Debit Card</a>
+	<a class="btn btn-lg btn-primary" href="@Url.Action("CreditCard", new { method="CheckoutKit.js" })">Pay by Credit/Debit Card (CheckoutKit.js)</a>
+
+	<a class="btn btn-lg btn-primary" href="@Url.Action("CreditCard", new { method="Checkout.js v2" })">Pay by Credit/Debit Card (Checkout.js v2)</a>
 
 	<a class="btn btn-lg btn-info" href="@Url.Action("PayPal")">Pay by PayPal</a>
 

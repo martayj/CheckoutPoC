@@ -41,8 +41,12 @@ namespace CheckoutComAndPayPalPoC.Controllers
 			return View();
 		}
 
-		public ActionResult CreditCard()
+		[HttpGet]
+		[ActionName("CreditCard")]
+		public ActionResult GetCreditCard(string method)
 		{
+			ViewBag.Method = method;
+
 			return View();
 		}
 
@@ -122,7 +126,8 @@ namespace CheckoutComAndPayPalPoC.Controllers
 		//}
 
 		[HttpPost]
-		public ActionResult CreditCard([Bind(Prefix = "cko-card-token")]string cardToken)
+		[ActionName("CreditCard")]
+		public ActionResult PostCreditCard([Bind(Prefix = "cko-card-token")]string cardToken)
 		{
 			// Create payload
 			// https://docs.checkout.com/reference/merchant-api-reference/charges/charge-with-card-token
@@ -196,6 +201,8 @@ namespace CheckoutComAndPayPalPoC.Controllers
 			}
 			var charge = response.Model;
 			Session["CreditCard.Charge"] = charge;
+
+			// TODO: Check payment was authorised before capturing.
 
 			// Capture
 			var captureResponse = client.ChargeService.CaptureCharge(charge.Id, new ChargeCapture()

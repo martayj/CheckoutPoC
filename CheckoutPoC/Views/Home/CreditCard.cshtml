@@ -1,23 +1,30 @@
 ﻿@using System.Configuration
 @{
-    ViewBag.Title = "Home Page";
+	ViewBag.Title = "Home Page";
 	var publicKey = ConfigurationManager.AppSettings["Checkout.PublishableKey"];
+
+	var method = (string)ViewBag.Method;
+
+	var secure = Request.Url.Scheme == "https" || Request.Headers["X-Forwarded-Proto"] == "https";
+	var baseUrl = (secure ? "https" : "http") + "://" + Request.Url.Host;
 }
 
 <p class="lead">Thank you for buying this kettle</p>
 <img src="http://media.4rgos.it/s/Argos/5571390_R_SET?$Main768$&w=620&h=620" />
 
-<form class="card-form" method="POST">
-	<input data-checkout="card-number" type="text" placeholder="Credit card number" value="4242424242424242">
-	<input data-checkout="card-name" type="text" placeholder="Name on card" value="Martin">
-	<input data-checkout="expiry-month" type="text" placeholder="MM" value="06">
-	<input data-checkout="expiry-year" type="text" placeholder="YY" value="18">
-	<input data-checkout="cvv" type="text" placeholder="CVV" value="100">
-	<input type="submit" value="Pay Now">
-</form>
+@if (method == "CheckoutKit.js")
+{
+	<form class="card-form" method="POST">
+		<input data-checkout="card-number" type="text" placeholder="Credit card number" value="4242424242424242">
+		<input data-checkout="card-name" type="text" placeholder="Name on card" value="Martin">
+		<input data-checkout="expiry-month" type="text" placeholder="MM" value="06">
+		<input data-checkout="expiry-year" type="text" placeholder="YY" value="18">
+		<input data-checkout="cvv" type="text" placeholder="CVV" value="100">
+		<input type="submit" value="Pay Now">
+	</form>
 
 
-<script>
+	<script>
     window.CKOConfig = {
         debugMode: true,
         publicKey: '@(publicKey)',
@@ -29,6 +36,49 @@
             // ...
         }
     };
-</script>
+	</script>
 
-<script async src="https://cdn.checkout.com/sandbox/js/checkoutkit.js"></script>
+	<script async src="https://cdn.checkout.com/sandbox/js/checkoutkit.js"></script>
+}
+else
+{
+	<div class="row">
+		<div class="col-md-offset-4 col-md-4">
+
+			<div class="payment-holder cko-expand">
+				<form class="payment-form" method="POST">
+					<script>
+				window.CKOConfig = {
+					publicKey: '@(publicKey)'
+					,value: 44.50
+					,currency: 'GBP'
+					,appMode: 'embedded'
+					,cardTokenised: function(event) {
+						console.log(event.data.cardToken);
+						document.getElementsByClassName('payment-form')[0].submit();
+					}
+					,theme: 'standard'
+					, themeOverride: '@(baseUrl + Url.Content("~/Styles/checkout/theme-template.css"))'
+					,cardFormValidationChanged: function (event) {
+						submitButton.disabled = !Checkout.isCardFormValid()
+					}
+				};
+					</script>
+					<script async src="https://cdn.checkout.com/v2/sandbox/js/checkout.js"></script>
+				</form>
+			</div>
+			<br />
+			<button id="submit-button" disabled class="btn btn-large btn-primary">Pay now</button>
+		</div>
+	</div>
+	<script>
+		var submitButton = document.getElementById("submit-button");
+		submitButton.addEventListener("click", function () {
+			if (Checkout.isCardFormValid()) Checkout.submitCardForm();
+		});
+	</script>
+}
+
+@section Styles {
+<link rel="stylesheet" type="text/css" href="https://cdn.checkout.com/v2/js/css/checkout.js.css">
+}

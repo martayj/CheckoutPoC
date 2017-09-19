@@ -50,10 +50,19 @@ else
 					<script>
 				window.CKOConfig = {
 					publicKey: '@(publicKey)'
-					,value: 44.50
-					,currency: 'GBP'
+					//,value: 44.50
+					//,currency: 'GBP'
 					,appMode: 'embedded'
-					,cardTokenised: function(event) {
+					, customerName: 'Pedro Chimighanga'
+					, billingDetails: {
+						addressLine1: '623 Slade Street',
+						addressLine2: 'Flat 9',
+						postcode: 'E149SR',
+						country: 'GB',
+						city: 'London',
+						phone: { number: '12345678' }
+					}
+					, cardTokenised: function (event) {
 						console.log(event.data.cardToken);
 						document.getElementsByClassName('payment-form')[0].submit();
 					}

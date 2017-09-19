@@ -14,6 +14,8 @@ using System.Net;
 using System.IO;
 using System.Runtime.Caching;
 using System.Text;
+using Checkout.ApiServices.Tokens.RequestModels;
+using Checkout.ApiServices.Tokens;
 
 namespace CheckoutComAndPayPalPoC.Controllers
 {
@@ -50,119 +52,9 @@ namespace CheckoutComAndPayPalPoC.Controllers
 			return View();
 		}
 
-		//public class CheckoutKitResponse
-		//{
-		//	//"id": "card_tok_22008D7D-B198-4D62-9970-E03476933162",
-		//	[JsonProperty("id")]
-		//	public string Id { get; set; }
-
-		//	//"liveMode": "false",
-		//	[JsonProperty("liveMode")]
-		//	public bool LiveMode { get; set; }
-
-		//	//"created": "2016-10-17T12:30:02Z",
-		//	[JsonProperty("created")]
-		//	public DateTime Created { get; set; }
-
-		//	//"used": false,
-		//	[JsonProperty("used")]
-		//	public bool Used { get; set; }
-
-		//	public class CheckoutKitResponseCard
-		//	{
-		//		//"expiryMonth": "06",
-		//		[JsonProperty("expiryMonth")]
-		//		public string ExpiryMonth { get; set; }
-
-		//		//"expiryYear": "2018",
-		//		[JsonProperty("expiryYear")]
-		//		public string ExpiryYear { get; set; }
-
-		//		//"last4": "8845",
-		//		[JsonProperty("last4")]
-		//		public string Last4 { get; set; }
-
-		//		//"bin": "488065",
-		//		[JsonProperty("bin")]
-		//		public string Bin { get; set; }
-
-		//		//"paymentMethod": "Visa"
-		//		[JsonProperty("paymentMethod")]
-		//		public string PaymentMethod { get; set; }
-		//	}
-
-		//	//"card": {
-		//	//},
-		//	[JsonProperty("card")]
-		//	public CheckoutKitResponseCard Card { get; set; }
-
-		//	public class CheckoutKitResponseBinData
-		//	{
-		//		//"bin": "488065",
-		//		[JsonProperty("bin")]
-		//		public string Bin { get; set; }
-
-		//		//"cardType": "Debit",
-		//		[JsonProperty("cardType")]
-		//		public string CardType { get; set; }
-
-		//		//"countryName": "Netherlands",
-		//		[JsonProperty("countryName")]
-		//		public string CountryName { get; set; }
-
-		//		//"bankName": "ING Bank",
-		//		[JsonProperty("bankName")]
-		//		public string BankName { get; set; }
-
-		//		//"issuerCountryISO2": "NL"
-		//		[JsonProperty("issuerCountryISO2")]
-		//		public string IssuerCountryISO2 { get; set; }
-		//	}
-
-		//	//"binData": {
-		//	//}
-		//	[JsonProperty("binData")]
-		//	public CheckoutKitResponseBinData BinData { get; set; }
-		//}
-
-		[HttpPost]
-		[ActionName("CreditCard")]
-		public ActionResult PostCreditCard([Bind(Prefix = "cko-card-token")]string cardToken)
+		private Product CreateCheckoutProduct()
 		{
-			// Create payload
-			// https://docs.checkout.com/reference/merchant-api-reference/charges/charge-with-card-token
-
-			var shippingAddress = new Checkout.ApiServices.SharedModels.Address()
-			{
-				AddressLine1 = "623 Slade Street",
-				AddressLine2 = "Flat 9",
-				Postcode = "E149SR",
-				Country = "UK",
-				City = "London",
-				State = "Greater London",
-				Phone = new Checkout.ApiServices.SharedModels.Phone()
-				{
-					CountryCode = "44",
-					Number = "12345678"
-				}
-			};
-
-			var billingAddress = new Checkout.ApiServices.SharedModels.Address()
-			{
-				AddressLine1 = "623 Slade Street",
-				AddressLine2 = "Flat 9",
-				Postcode = "E149SR",
-				Country = "UK",
-				City = "London",
-				State = "Greater London",
-				Phone = new Checkout.ApiServices.SharedModels.Phone()
-				{
-					CountryCode = "44",
-					Number = "12345678"
-				}
-			};
-
-			var product = new Product()
+			return new Product()
 			{
 				Name = "Kettle",
 				Description = "It's a kettle",
@@ -172,6 +64,58 @@ namespace CheckoutComAndPayPalPoC.Controllers
 				Sku = "1aab2aa",
 				TrackingUrl = null
 			};
+		}
+
+		private Checkout.ApiServices.SharedModels.Address CreateCheckoutAddress()
+		{
+			return new Checkout.ApiServices.SharedModels.Address()
+			{
+				AddressLine1 = "623 Slade Street",
+				AddressLine2 = "Flat 9",
+				Postcode = "E149SR",
+				Country = "UK",
+				City = "London",
+				State = "Greater London",
+				Phone = new Checkout.ApiServices.SharedModels.Phone()
+				{
+					CountryCode = "44",
+					Number = "12345678"
+				}
+			};
+		}
+
+		private string GetCardType(string cardToken)
+		{
+			var client = CreateAPIClient();
+
+			// https://docs.checkout.com/reference/merchant-api-reference/lookups/bin-lookup-via-card-token
+			var response = client.TokenService.GetBinLookupViaCardToken(cardToken);
+			if (response.HasError)
+			{
+				throw new Exception(response.Error.Message);
+			}
+			var binInfo = response.Model;
+			return binInfo.Type;
+		}
+
+		[HttpPost]
+		[ActionName("CreditCard")]
+		public ActionResult PostCreditCard([Bind(Prefix = "cko-card-token")]string cardToken)
+		{
+			// Create payload
+			// https://docs.checkout.com/reference/merchant-api-reference/charges/charge-with-card-token
+
+			var shippingAddress = CreateCheckoutAddress();
+			var billingAddress = CreateCheckoutAddress();
+			var product = CreateCheckoutProduct();
+			var orderId = Guid.NewGuid();
+
+			var amount = ((product.Price * product.Quantity) + product.ShippingCost);
+
+			// Find out the card type
+			var cardType = GetCardType(cardToken);
+			if (cardType == "Credit")
+				amount *= 0.02m; // 2% credit card surcharge
 
 			var payload = new CardTokenCharge()
 			{
@@ -179,11 +123,11 @@ namespace CheckoutComAndPayPalPoC.Controllers
 				//AutoCapTime = 0, // transfer funds immediately after authorisation
 				AutoCapture = "N", // manually capture
 				ChargeMode = 1, // non-3D
-				Email = "martin.cannon@freshegg.com",
+				Email = "pedro.chimighanga@freshegg.com",
 				Description = "Order",
-				Value = (((product.Price * product.Quantity) + product.ShippingCost) * 100).ToString("0"),
+				Value = (amount * 100).ToString("0"),
 				Currency = "GBP",
-				//TrackId = "TRK12345",
+				TrackId = orderId.ToString(),
 				TransactionIndicator = "1", // regular
 				CustomerIp = Request.ServerVariables["REMOTE_ADDR"] ?? Request.ServerVariables["HTTP_X_FORWARDED_FOR"],
 				CardToken = cardToken,
@@ -243,7 +187,87 @@ namespace CheckoutComAndPayPalPoC.Controllers
 			return context;
 		}
 
-		public ActionResult PayPal()
+		[HttpGet]
+		[ActionName("PayPal")]
+		public ActionResult GetPayPal(string method)
+		{
+			if (method == "Checkout")
+				return PayPalCheckout();
+			else
+				return PayPalREST();
+		}
+
+		private ActionResult PayPalCheckout()
+		{
+			// https://docs.checkout.com/getting-started/merchant-api/alternative-payments/paypal/authorise-paypal-charge
+
+			// Step 1: Create a Payment Token
+			var shippingAddress = CreateCheckoutAddress();
+			var billingAddress = CreateCheckoutAddress();
+			var product = CreateCheckoutProduct();
+			var orderId = Guid.NewGuid();
+
+			var requestModel = new PaymentTokenCreate()
+			{
+				Currency = "GBP",
+				Value = (((product.Price * product.Quantity) + product.ShippingCost) * 100).ToString("0"),
+				AutoCapture = "N", // In addition, autoCapture must be set to n to capture authorised charges manually as can be seen in our Instant Settlement guide.
+				ChargeMode = 3, // chargeMode must be set to 3 for all Alternative Payments.
+				Email = "martin.cannon@freshegg.com",
+				CustomerIp = Request.ServerVariables["REMOTE_ADDR"] ?? Request.ServerVariables["HTTP_X_FORWARDED_FOR"],
+				TrackId = orderId.ToString(), // The trackId parameter is required when creating a payment token to be used with PayPal and should be unique for each request. 
+				Description = "Order",
+				ShippingDetails = shippingAddress,
+				// billing address??
+				Products = new List<Product>() { product }
+			};
+
+			var client = CreateAPIClient();
+			var paymentTokenResponse = client.TokenService.CreatePaymentToken(requestModel);
+			if (paymentTokenResponse.HasError)
+			{
+				throw new Exception(paymentTokenResponse.Error.Message);
+			}
+			var paymentToken = paymentTokenResponse.Model;
+			//Session["PayPal.PaymentToken"] = paymentToken;
+
+			// Step 2: Create an Alternative Payment Charge
+			var localPaymentChargeRequest = new LocalPaymentCharge()
+			{
+				Email = "martin.cannon@freshegg.com",
+				LocalPayment = new LocalPaymentCreate()
+				{
+					LppId = "lpp_19" // PayPal - https://docs.checkout.com/reference/checkout-js-reference/alternative-payments
+				},
+				PaymentToken = paymentToken.Id
+			};
+			var alternativePaymentChargeResponse = client.ChargeService.ChargeWithLocalPayment(localPaymentChargeRequest);
+			if (alternativePaymentChargeResponse.HasError)
+			{
+				throw new Exception(alternativePaymentChargeResponse.Error.Message);
+			}
+			var charge = alternativePaymentChargeResponse.Model;
+
+			// Step 3: Handle Alternative Payment Response
+			if (charge.ResponseCode != "10000")
+				throw new Exception("Unexpected response code creating charge: " + charge.ResponseCode);
+			if (charge.LocalPayment == null || string.IsNullOrWhiteSpace(charge.LocalPayment.PaymentUrl))
+				throw new Exception("No payment url for alternative charge: " + charge.ResponseCode);
+
+			return Redirect(charge.LocalPayment.PaymentUrl);
+		}
+
+		// Step 4: Customer Completes Alternative Payment Page
+
+		// Step 5: Checkout.com Redirects to Merchant's 'Payment Successful' Page
+		// Please send your desired 'Payment Successful' and 'Payment Unsuccessful' redirect URLs to our integration team to configure. BIT NAFF.
+
+		// Step 6: Verify the Alternative Payment Charge
+
+		// Step 7: Confirm Payment via Webhooks
+		// Webhooks are the only way to confirm the successful completion of an Alternative Payment transaction.
+
+		private ActionResult PayPalREST()
 		{
 			// https://github.com/pedropaf/paypal-integration
 			// http://paypal.github.io/PayPal-NET-SDK/Samples/PaymentWithPayPal.aspx.html
@@ -587,6 +611,43 @@ namespace CheckoutComAndPayPalPoC.Controllers
 			}
 
 			return ip;
+		}
+	}
+
+	public class TokenBinInfo
+	{
+		//{
+		//  "token": "card_tok_AF377225-9A51-4A33-B9F8-B75F9D14D709",
+		//  "bin": "549486",
+		//  "issuer": "ALANDSBANKEN ABP",
+		//  "issuerCountry": "Finland",
+		//  "issuerCountryIso2": "FI",
+		//  "scheme": "Visa",
+		//  "type": "Credit",
+		//  "category": "Consumer",
+		//  "productId": "F",
+		//  "productType": "CLASSIC"
+		//}
+		public string Token { get; set; }
+		public string Bin { get; set; }
+		public string Issuer { get; set; }
+		public string IssuerCountry { get; set; }
+		public string IssuerCountryISO2 { get; set; }
+		public string Scheme { get; set; }
+		public string Type { get; set; }
+		public string Category { get; set; }
+		public string ProductId { get; set; }
+		public string ProductType { get; set; }
+	}
+
+	public static class TokenServiceExtensions
+	{
+		public static HttpResponse<TokenBinInfo> GetBinLookupViaCardToken(this TokenService tokenService, string cardToken)
+		{
+			// https://docs.checkout.com/reference/merchant-api-reference/lookups/bin-lookup-via-card-token
+			// SDK doesn't support this endpoint so call it manually.
+			var uri = string.Concat(AppSettings.BaseApiUri, string.Format("/tokens/{0}", cardToken));
+			return new ApiHttpClient().GetRequest<TokenBinInfo>(uri, AppSettings.SecretKey);
 		}
 	}
 }

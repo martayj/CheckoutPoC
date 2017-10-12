@@ -16,6 +16,8 @@ using System.Runtime.Caching;
 using System.Text;
 using Checkout.ApiServices.Tokens.RequestModels;
 using Checkout.ApiServices.Tokens;
+using Checkout.ApiServices.Tokens.ResponseModels;
+using CheckoutPoC;
 
 namespace CheckoutComAndPayPalPoC.Controllers
 {
@@ -89,10 +91,14 @@ namespace CheckoutComAndPayPalPoC.Controllers
 			var client = CreateAPIClient();
 
 			// https://docs.checkout.com/reference/merchant-api-reference/lookups/bin-lookup-via-card-token
-			var response = client.TokenService.GetBinLookupViaCardToken(cardToken);
+			var response = client.GetBinLookupViaCardToken(cardToken);
 			if (response.HasError)
 			{
 				throw new Exception(response.Error.Message);
+			}
+			if (response.HttpStatusCode != HttpStatusCode.OK)
+			{
+				throw new Exception(string.Format("Failed with status code: {0}", response.HttpStatusCode));
 			}
 			var binInfo = response.Model;
 			return binInfo.Type;
@@ -115,7 +121,7 @@ namespace CheckoutComAndPayPalPoC.Controllers
 			// Find out the card type
 			var cardType = GetCardType(cardToken);
 			if (cardType == "Credit")
-				amount *= 0.02m; // 2% credit card surcharge
+				amount *= 1.025m; // 2% credit card surcharge
 
 			var payload = new CardTokenCharge()
 			{
@@ -138,10 +144,14 @@ namespace CheckoutComAndPayPalPoC.Controllers
 
 			var client = CreateAPIClient();
 			// Authorise
-			var response = client.ChargeService.ChargeWithCardToken(payload);
+			var response = client.ChargeWithCardToken(payload);
 			if (response.HasError)
 			{
 				throw new Exception(response.Error.Message);
+			}
+			if (response.HttpStatusCode != HttpStatusCode.OK)
+			{
+				throw new Exception(string.Format("Failed with status code: {0}", response.HttpStatusCode));
 			}
 			var charge = response.Model;
 			Session["CreditCard.Charge"] = charge;
@@ -149,7 +159,7 @@ namespace CheckoutComAndPayPalPoC.Controllers
 			// TODO: Check payment was authorised before capturing.
 
 			// Capture
-			var captureResponse = client.ChargeService.CaptureCharge(charge.Id, new ChargeCapture()
+			var captureResponse = client.CaptureCharge(charge.Id, new ChargeCapture()
 			{
 				// I don't see the point in sending this info??
 				Value = charge.Value,
@@ -160,19 +170,33 @@ namespace CheckoutComAndPayPalPoC.Controllers
 			{
 				throw new Exception(captureResponse.Error.Message);
 			}
+			if (captureResponse.HttpStatusCode != HttpStatusCode.OK)
+			{
+				throw new Exception(string.Format("Failed with status code: {0}", captureResponse.HttpStatusCode));
+			}
 			var capture = captureResponse.Model;
 			Session["CreditCard.Capture"] = capture;
 
 			return View("Confirmation");
 		}
 
-		public static APIClient CreateAPIClient()
+		//public static APIClient CreateAPIClient()
+		//{
+		//	var secretKey = ConfigurationManager.AppSettings["Checkout.SecretKey"];
+		//	var env = (Checkout.Helpers.Environment)Enum.Parse(typeof(Checkout.Helpers.Environment), ConfigurationManager.AppSettings["Checkout.Environment"], true);
+		//	var debugMode = Convert.ToBoolean(ConfigurationManager.AppSettings["Checkout.DebugMode"]);
+		//	var connectTimeout = Convert.ToInt32(ConfigurationManager.AppSettings["Checkout.RequestTimeout"]);
+		//	var client = new APIClient(secretKey, env, debugMode, connectTimeout);
+		//	return client;
+		//}
+
+		public static CheckoutApiRestClient CreateAPIClient()
 		{
 			var secretKey = ConfigurationManager.AppSettings["Checkout.SecretKey"];
 			var env = (Checkout.Helpers.Environment)Enum.Parse(typeof(Checkout.Helpers.Environment), ConfigurationManager.AppSettings["Checkout.Environment"], true);
-			var debugMode = Convert.ToBoolean(ConfigurationManager.AppSettings["Checkout.DebugMode"]);
+			//var debugMode = Convert.ToBoolean(ConfigurationManager.AppSettings["Checkout.DebugMode"]); just writes debug messages to console.
 			var connectTimeout = Convert.ToInt32(ConfigurationManager.AppSettings["Checkout.RequestTimeout"]);
-			var client = new APIClient(secretKey, env, debugMode, connectTimeout);
+			var client = new CheckoutApiRestClient(secretKey, env, connectTimeout);
 			return client;
 		}
 
@@ -206,45 +230,57 @@ namespace CheckoutComAndPayPalPoC.Controllers
 			var billingAddress = CreateCheckoutAddress();
 			var product = CreateCheckoutProduct();
 			var orderId = Guid.NewGuid();
+			var email = "cannonm@freshegg.com";
 
-			var requestModel = new PaymentTokenCreate()
+			var amount = ((product.Price * product.Quantity) + product.ShippingCost);
+
+			var paymentTokenCreate = new PaymentTokenCreate()
 			{
+				Value = (amount * 100).ToString("0"),
 				Currency = "GBP",
-				Value = (((product.Price * product.Quantity) + product.ShippingCost) * 100).ToString("0"),
 				AutoCapture = "N", // In addition, autoCapture must be set to n to capture authorised charges manually as can be seen in our Instant Settlement guide.
 				ChargeMode = 3, // chargeMode must be set to 3 for all Alternative Payments.
-				Email = "martin.cannon@freshegg.com",
-				CustomerIp = Request.ServerVariables["REMOTE_ADDR"] ?? Request.ServerVariables["HTTP_X_FORWARDED_FOR"],
+				Email = email,
+				//CustomerIp = Request.ServerVariables["REMOTE_ADDR"] ?? Request.ServerVariables["HTTP_X_FORWARDED_FOR"],
 				TrackId = orderId.ToString(), // The trackId parameter is required when creating a payment token to be used with PayPal and should be unique for each request. 
 				Description = "Order",
-				ShippingDetails = shippingAddress,
+				//ShippingDetails = shippingAddress,
 				// billing address??
-				Products = new List<Product>() { product }
+				//Products = new List<Product>() { product }
 			};
 
 			var client = CreateAPIClient();
-			var paymentTokenResponse = client.TokenService.CreatePaymentToken(requestModel);
+			var paymentTokenResponse = client.CreatePaymentToken(paymentTokenCreate);
 			if (paymentTokenResponse.HasError)
 			{
 				throw new Exception(paymentTokenResponse.Error.Message);
 			}
+			if (paymentTokenResponse.HttpStatusCode != HttpStatusCode.OK)
+			{
+				throw new Exception(string.Format("Failed with status code: {0}", paymentTokenResponse.HttpStatusCode));
+			}
 			var paymentToken = paymentTokenResponse.Model;
-			//Session["PayPal.PaymentToken"] = paymentToken;
+			Session["PayPal.PaymentToken"] = paymentToken;
 
 			// Step 2: Create an Alternative Payment Charge
 			var localPaymentChargeRequest = new LocalPaymentCharge()
 			{
-				Email = "martin.cannon@freshegg.com",
+				Email = email,
 				LocalPayment = new LocalPaymentCreate()
 				{
-					LppId = "lpp_19" // PayPal - https://docs.checkout.com/reference/checkout-js-reference/alternative-payments
+					LppId = "lpp_19", // PayPal - https://docs.checkout.com/reference/checkout-js-reference/alternative-payments
+					UserData = new Dictionary<string, string>()
 				},
 				PaymentToken = paymentToken.Id
 			};
-			var alternativePaymentChargeResponse = client.ChargeService.ChargeWithLocalPayment(localPaymentChargeRequest);
+			var alternativePaymentChargeResponse = client.ChargeWithLocalPayment(localPaymentChargeRequest);
 			if (alternativePaymentChargeResponse.HasError)
 			{
 				throw new Exception(alternativePaymentChargeResponse.Error.Message);
+			}
+			if (alternativePaymentChargeResponse.HttpStatusCode != HttpStatusCode.OK)
+			{
+				throw new Exception(string.Format("Failed with status code: {0}", alternativePaymentChargeResponse.HttpStatusCode));
 			}
 			var charge = alternativePaymentChargeResponse.Model;
 
@@ -253,6 +289,8 @@ namespace CheckoutComAndPayPalPoC.Controllers
 				throw new Exception("Unexpected response code creating charge: " + charge.ResponseCode);
 			if (charge.LocalPayment == null || string.IsNullOrWhiteSpace(charge.LocalPayment.PaymentUrl))
 				throw new Exception("No payment url for alternative charge: " + charge.ResponseCode);
+
+			Session["PayPal.LocalPaymentCharge"] = charge;
 
 			return Redirect(charge.LocalPayment.PaymentUrl);
 		}
@@ -317,7 +355,7 @@ namespace CheckoutComAndPayPalPoC.Controllers
 				redirect_urls = new RedirectUrls()
 				{
 					cancel_url = baseUrl + "/Home/PaymentCancelled?orderId=" + orderId.ToString(),
-					return_url = baseUrl + "/Home/PaymentSuccessful?orderId=" + orderId.ToString()
+					return_url = baseUrl + "/Home/PayPalPaymentSuccessful?orderId=" + orderId.ToString()
 				}
 			};
 
@@ -327,12 +365,56 @@ namespace CheckoutComAndPayPalPoC.Controllers
 			return Redirect(createdPayment.GetApprovalUrl());
 		}
 
-		public ActionResult PaymentCancelled()
+		public ActionResult PaymentCancelled([Bind(Prefix = "cko-payment-token")]string cardToken)
 		{
+			var paymentToken = Session["PayPal.PaymentToken"] as Checkout.ApiServices.Tokens.ResponseModels.PaymentToken;
+			var charge = Session["PayPal.LocalPaymentCharge"] as Checkout.ApiServices.Charges.ResponseModels.Charge;
+
 			// TODO: Handle cancelled payment
 			return View();
 		}
 
+		public ActionResult PaymentSuccessful([Bind(Prefix = "cko-payment-token")]string paymentToken)
+		{
+			//var paymentToken = Session["PayPal.PaymentToken"] as Checkout.ApiServices.Tokens.ResponseModels.PaymentToken;
+			//var charge = Session["PayPal.LocalPaymentCharge"] as Checkout.ApiServices.Charges.ResponseModels.Charge;
+
+			if (!string.IsNullOrWhiteSpace(paymentToken))
+			{
+				var client = CreateAPIClient();
+
+				// Verify the charge
+				var chargeResponse = client.VerifyCharge(paymentToken);
+				if (chargeResponse.HasError)
+					throw new Exception(chargeResponse.Error.Message);
+				if (chargeResponse.HttpStatusCode != HttpStatusCode.OK)
+					throw new Exception(string.Format("Failed with status code: {0}", chargeResponse.HttpStatusCode));
+				var charge = chargeResponse.Model;
+
+				// Capture the charge
+				var captureResponse = client.CaptureCharge(charge.Id, new ChargeCapture()
+				{
+					// I don't see the point in sending this info??
+					Value = charge.Value,
+					Description = charge.Description,
+					Products = charge.Products
+				});
+				if (captureResponse.HasError)
+				{
+					throw new Exception(captureResponse.Error.Message);
+				}
+				if (captureResponse.HttpStatusCode != HttpStatusCode.OK)
+				{
+					throw new Exception(string.Format("Failed with status code: {0}", captureResponse.HttpStatusCode));
+				}
+				var capture = captureResponse.Model;
+				Session["PayPal.Capture"] = capture;
+			}
+
+			return View(new { });
+		}
+
+		[ActionName("PayPalPaymentSuccessful")]
 		public ActionResult PaymentSuccessful(string paymentId, string token, string payerId)
 		{
 			var context = CreatePayPalAPIContext();
@@ -350,7 +432,7 @@ namespace CheckoutComAndPayPalPoC.Controllers
 		{
 			if (Session["CreditCard.Capture"] != null)
 				_RefundCreditCard();
-			else if (Session["CreditCard.Capture"] != null)
+			else if (Session["CreditCard.Charge"] != null)
 				_VoidCreditCard();
 
 			return RedirectToAction("Index");
@@ -364,7 +446,7 @@ namespace CheckoutComAndPayPalPoC.Controllers
 
 			// Captured, so refund
 			var client = CreateAPIClient();
-			var response = client.ChargeService.RefundCharge(capture.Id, new ChargeRefund()
+			var response = client.RefundCharge(capture.Id, new ChargeRefund()
 			{
 				// I don't see the point in sending this info??
 				//Value = capture.Value,
@@ -374,6 +456,10 @@ namespace CheckoutComAndPayPalPoC.Controllers
 
 			if (response.HasError)
 				throw new Exception(response.Error.Message);
+			if (response.HttpStatusCode != HttpStatusCode.OK)
+			{
+				throw new Exception(string.Format("Failed with status code: {0}", response.HttpStatusCode));
+			}
 
 			var refund = response.Model;
 			if (refund.Status != "Refunded")
@@ -390,7 +476,7 @@ namespace CheckoutComAndPayPalPoC.Controllers
 
 			// Authorised, so void
 			var client = CreateAPIClient();
-			var response = client.ChargeService.VoidCharge(charge.Id, new ChargeVoid()
+			var response = client.VoidCharge(charge.Id, new ChargeVoid()
 			{
 				// I don't see the point in sending this info??
 				Description = charge.Description,
@@ -399,6 +485,10 @@ namespace CheckoutComAndPayPalPoC.Controllers
 
 			if (response.HasError)
 				throw new Exception(response.Error.Message);
+			if (response.HttpStatusCode != HttpStatusCode.OK)
+			{
+				throw new Exception(string.Format("Failed with status code: {0}", response.HttpStatusCode));
+			}
 
 			var @void = response.Model;
 			if (@void.Status != "Voided")
@@ -413,18 +503,59 @@ namespace CheckoutComAndPayPalPoC.Controllers
 				return RedirectToAction("Index");
 
 			var client = CreateAPIClient();
-			var response = client.ChargeService.RefundCharge("charge_" + chargeId, new ChargeRefund()
+
+			var chargeResponse = client.GetCharge(chargeId);
+			if (chargeResponse.HasError)
+				throw new Exception(chargeResponse.Error.Message);
+			if (chargeResponse.HttpStatusCode != HttpStatusCode.OK)
+				throw new Exception(string.Format("Failed with status code: {0}", chargeResponse.HttpStatusCode));
+			var charge = chargeResponse.Model;
+
+			if (charge.Status == "Captured")
 			{
-			});
+				var response = client.RefundCharge(chargeId, new ChargeRefund()
+				{
+					Value = charge.Value
+				});
+				if (response.HasError)
+					throw new Exception(response.Error.Message);
+				if (response.HttpStatusCode != HttpStatusCode.OK)
+				{
+					throw new Exception(string.Format("Failed with status code: {0}", response.HttpStatusCode));
+				}
+				var refund = response.Model;
 
-			if (response.HasError)
-				throw new Exception(response.Error.Message);
+				if (refund.Status != "Refunded")
+					throw new Exception("Not refunded??");
+				Session["CreditCard.Refund"] = refund;
+			}
+			else if (charge.Status == "Authorised")
+			{
+				var response = client.VoidCharge(charge.Id, new ChargeVoid()
+				{
+					//// I don't see the point in sending this info??
+					//Description = charge.Description,
+					//Products = charge.Products,
+				});
 
-			var refund = response.Model;
-			if (refund.Status != "Refunded")
-				throw new Exception("Not refunded??");
+				if (response.HasError)
+					throw new Exception(response.Error.Message);
+				if (response.HttpStatusCode != HttpStatusCode.OK)
+				{
+					throw new Exception(string.Format("Failed with status code: {0}", response.HttpStatusCode));
+				}
 
-			Session["CreditCard.Refund"] = refund;
+				var @void = response.Model;
+				if (@void.Status != "Voided")
+					throw new Exception("Not voided??");
+
+				Session["CreditCard.Void"] = @void;
+			}
+			else if (charge.Status == "Pending")
+			{
+				// Pending - don't do anything.
+			}
+
 			return RedirectToAction("Index");
 		}
 
@@ -571,7 +702,8 @@ namespace CheckoutComAndPayPalPoC.Controllers
 		}
 		protected override void HandleUnauthorizedRequest(AuthorizationContext filterContext)
 		{
-			base.HandleUnauthorizedRequest(filterContext);
+			filterContext.Result = new HttpStatusCodeResult(HttpStatusCode.Unauthorized);
+			//base.HandleUnauthorizedRequest(filterContext);
 		}
 		private bool Authorize(AuthorizationContext actionContext)
 		{
@@ -605,6 +737,12 @@ namespace CheckoutComAndPayPalPoC.Controllers
 		{
 			string ip = request.Headers["X-Forwarded-For"];
 
+			if (!string.IsNullOrWhiteSpace(ip) && ip.Contains(","))
+			{
+				// if this is a list of IPs then choose the last one.
+				ip = ip.Split(new[] { ',' }).Last().Trim();
+			}
+
 			if (string.IsNullOrEmpty(ip))
 			{
 				ip = request.UserHostAddress;
@@ -614,40 +752,40 @@ namespace CheckoutComAndPayPalPoC.Controllers
 		}
 	}
 
-	public class TokenBinInfo
-	{
-		//{
-		//  "token": "card_tok_AF377225-9A51-4A33-B9F8-B75F9D14D709",
-		//  "bin": "549486",
-		//  "issuer": "ALANDSBANKEN ABP",
-		//  "issuerCountry": "Finland",
-		//  "issuerCountryIso2": "FI",
-		//  "scheme": "Visa",
-		//  "type": "Credit",
-		//  "category": "Consumer",
-		//  "productId": "F",
-		//  "productType": "CLASSIC"
-		//}
-		public string Token { get; set; }
-		public string Bin { get; set; }
-		public string Issuer { get; set; }
-		public string IssuerCountry { get; set; }
-		public string IssuerCountryISO2 { get; set; }
-		public string Scheme { get; set; }
-		public string Type { get; set; }
-		public string Category { get; set; }
-		public string ProductId { get; set; }
-		public string ProductType { get; set; }
-	}
+	//public class TokenBinInfo
+	//{
+	//	//{
+	//	//  "token": "card_tok_AF377225-9A51-4A33-B9F8-B75F9D14D709",
+	//	//  "bin": "549486",
+	//	//  "issuer": "ALANDSBANKEN ABP",
+	//	//  "issuerCountry": "Finland",
+	//	//  "issuerCountryIso2": "FI",
+	//	//  "scheme": "Visa",
+	//	//  "type": "Credit",
+	//	//  "category": "Consumer",
+	//	//  "productId": "F",
+	//	//  "productType": "CLASSIC"
+	//	//}
+	//	public string Token { get; set; }
+	//	public string Bin { get; set; }
+	//	public string Issuer { get; set; }
+	//	public string IssuerCountry { get; set; }
+	//	public string IssuerCountryISO2 { get; set; }
+	//	public string Scheme { get; set; }
+	//	public string Type { get; set; }
+	//	public string Category { get; set; }
+	//	public string ProductId { get; set; }
+	//	public string ProductType { get; set; }
+	//}
 
-	public static class TokenServiceExtensions
-	{
-		public static HttpResponse<TokenBinInfo> GetBinLookupViaCardToken(this TokenService tokenService, string cardToken)
-		{
-			// https://docs.checkout.com/reference/merchant-api-reference/lookups/bin-lookup-via-card-token
-			// SDK doesn't support this endpoint so call it manually.
-			var uri = string.Concat(AppSettings.BaseApiUri, string.Format("/tokens/{0}", cardToken));
-			return new ApiHttpClient().GetRequest<TokenBinInfo>(uri, AppSettings.SecretKey);
-		}
-	}
+	//public static class TokenServiceExtensions
+	//{
+	//	public static HttpResponse<TokenBinInfo> GetBinLookupViaCardToken(this TokenService tokenService, string cardToken)
+	//	{
+	//		// https://docs.checkout.com/reference/merchant-api-reference/lookups/bin-lookup-via-card-token
+	//		// SDK doesn't support this endpoint so call it manually.
+	//		var uri = string.Concat(AppSettings.BaseApiUri, string.Format("/tokens/{0}", cardToken));
+	//		return new ApiHttpClient().GetRequest<TokenBinInfo>(uri, AppSettings.SecretKey);
+	//	}
+	//}
 }
